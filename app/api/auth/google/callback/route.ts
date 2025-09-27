@@ -5,6 +5,9 @@ import jwt from "jsonwebtoken"
 const sql = neon(process.env.DATABASE_URL!)
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
+// Force dynamic rendering
+export const dynamic = "force-dynamic"
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -48,8 +51,8 @@ export async function GET(request: NextRequest) {
     if (!user) {
       // Create new user
       ;[user] = await sql`
-        INSERT INTO users (name, email, auth_provider, google_id)
-        VALUES (${googleUser.name}, ${googleUser.email}, 'google', ${googleUser.id})
+        INSERT INTO users (name, email, auth_provider, google_id, role)
+        VALUES (${googleUser.name}, ${googleUser.email}, 'google', ${googleUser.id}, 'user')
         RETURNING id, name, email
       `
     }

@@ -5,6 +5,9 @@ import jwt from "jsonwebtoken"
 const sql = neon(process.env.DATABASE_URL!)
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
+// Force dynamic rendering
+export const dynamic = "force-dynamic"
+
 async function getUserFromToken(request: NextRequest) {
   const token = request.cookies.get("auth-token")?.value
 

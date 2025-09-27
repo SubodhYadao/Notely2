@@ -3,6 +3,9 @@ import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
+// Force dynamic rendering
+export const dynamic = "force-dynamic"
+
 export async function POST(request: NextRequest) {
   try {
     const { email, otp } = await request.json()

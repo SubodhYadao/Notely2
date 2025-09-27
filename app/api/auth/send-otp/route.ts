@@ -4,19 +4,39 @@ import nodemailer from "nodemailer"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-// Create nodemailer transporter
+// Force dynamic rendering
+export const dynamic = "force-dynamic"
+
+// Create nodemailer transporter with better error handling
 const createTransporter = () => {
+  // Check if we have the required environment variables
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+    console.error("Missing email configuration. Please set EMAIL_USER and EMAIL_APP_PASSWORD")
+    return null
+  }
+
   return nodemailer.createTransport({
-    service: "gmail", // You can change this to other services
+    service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_APP_PASSWORD, // Use App Password for Gmail
+      pass: process.env.EMAIL_APP_PASSWORD, // This must be an App Password, not your regular password
+    },
+    // Add these options for better Gmail compatibility
+    secure: true,
+    port: 465,
+    tls: {
+      rejectUnauthorized: false,
     },
   })
 }
 
 // Alternative configuration for custom SMTP
 const createCustomTransporter = () => {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+    console.error("Missing SMTP configuration")
+    return null
+  }
+
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number.parseInt(process.env.SMTP_PORT || "587"),
@@ -31,6 +51,14 @@ const createCustomTransporter = () => {
 const sendOTPEmail = async (email: string, otp: string, name: string) => {
   try {
     const transporter = process.env.SMTP_HOST ? createCustomTransporter() : createTransporter()
+
+    if (!transporter) {
+      throw new Error("Email transporter configuration failed")
+    }
+
+    // Verify transporter configuration
+    await transporter.verify()
+    console.log("Email transporter verified successfully")
 
     const mailOptions = {
       from: {
@@ -93,7 +121,7 @@ const sendOTPEmail = async (email: string, otp: string, name: string) => {
             <!-- Footer -->
             <div style="background-color: #f9fafb; padding: 24px 20px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="color: #9ca3af; margin: 0; font-size: 12px;">
-                © 2024 HD Notes App. All rights reserved.
+                © 2025 HD Notes App. All rights reserved.
               </p>
               <p style="color: #9ca3af; margin: 8px 0 0 0; font-size: 12px;">
                 This email was sent to ${email}
@@ -165,6 +193,15 @@ export async function POST(request: NextRequest) {
         user_data = ${JSON.stringify({ name, dateOfBirth, email })},
         created_at = CURRENT_TIMESTAMP
     `
+
+    // Check if email configuration is available
+    if (!process.env.EMAIL_USER && !process.env.SMTP_HOST) {
+      console.log(`OTP for ${email}: ${otp} (Email not configured)`)
+      return NextResponse.json({
+        message: "OTP generated successfully (Email service not configured)",
+        debug: { otp }, // Show OTP in response for development
+      })
+    }
 
     // Send OTP via email
     const emailResult = await sendOTPEmail(email, otp, name)

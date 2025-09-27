@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+// Force dynamic rendering
+export const dynamic = "force-dynamic"
+
 export async function GET(request: NextRequest) {
   const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,

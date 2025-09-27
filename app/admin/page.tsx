@@ -17,6 +17,7 @@ import {
   CalendarIcon,
   MailIcon,
   UserIcon,
+  RefreshCwIcon,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -52,6 +53,7 @@ export default function AdminDashboard() {
   const [notes, setNotes] = useState<Note[]>([])
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [userNotes, setUserNotes] = useState<Note[]>([])
@@ -62,23 +64,57 @@ export default function AdminDashboard() {
     fetchAdminData()
   }, [])
 
-  const fetchAdminData = async () => {
+  const fetchAdminData = async (showRefreshLoader = false) => {
+    if (showRefreshLoader) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+
     try {
+      // Add cache-busting timestamp to prevent caching
+      const timestamp = new Date().getTime()
+
       const [usersRes, notesRes, statsRes] = await Promise.all([
-        fetch("/api/admin/users"),
-        fetch("/api/admin/notes"),
-        fetch("/api/admin/stats"),
+        fetch(`/api/admin/users?t=${timestamp}`, {
+          method: "GET",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }),
+        fetch(`/api/admin/notes?t=${timestamp}`, {
+          method: "GET",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }),
+        fetch(`/api/admin/stats?t=${timestamp}`, {
+          method: "GET",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }),
       ])
 
       if (!usersRes.ok || !notesRes.ok || !statsRes.ok) {
         if (usersRes.status === 403 || notesRes.status === 403 || statsRes.status === 403) {
-          router.push("/auth/signin")
+          router.push("/admin/signin")
           return
         }
         throw new Error("Failed to fetch admin data")
       }
 
       const [usersData, notesData, statsData] = await Promise.all([usersRes.json(), notesRes.json(), statsRes.json()])
+
+      console.log("Fetched users:", usersData.length)
+      console.log("Fetched notes:", notesData.length)
+      console.log("Fetched stats:", statsData)
 
       setUsers(usersData)
       setNotes(notesData)
@@ -87,13 +123,22 @@ export default function AdminDashboard() {
       console.error("Error fetching admin data:", error)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
   const fetchUserNotes = async (userId: string) => {
     setLoadingUserNotes(true)
     try {
-      const response = await fetch(`/api/admin/users/${userId}/notes`)
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/admin/users/${userId}/notes?t=${timestamp}`, {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         setUserNotes(data)
@@ -113,10 +158,14 @@ export default function AdminDashboard() {
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" })
-      router.push("/auth/signin")
+      router.push("/admin/signin")
     } catch (error) {
       console.error("Error logging out:", error)
     }
+  }
+
+  const handleRefresh = () => {
+    fetchAdminData(true)
   }
 
   const filteredUsers = users.filter(
@@ -135,7 +184,10 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading admin dashboard...</p>
+        </div>
       </div>
     )
   }
@@ -157,10 +209,27 @@ export default function AdminDashboard() {
             </Badge>
           </div>
 
-          <Button onClick={handleLogout} variant="outline" size="sm" className="flex items-center gap-2 bg-transparent">
-            <LogOutIcon className="w-4 h-4" />
-            Logout
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleRefresh}
+              variant="outline"
+              size="sm"
+              disabled={refreshing}
+              className="flex items-center gap-2 bg-transparent"
+            >
+              <RefreshCwIcon className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2 bg-transparent"
+            >
+              <LogOutIcon className="w-4 h-4" />
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -239,99 +308,123 @@ export default function AdminDashboard() {
 
           <TabsContent value="users">
             <div className="grid gap-4">
-              {filteredUsers.map((user) => (
-                <Card key={user.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                          <UserIcon className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{user.name}</h3>
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <MailIcon className="w-4 h-4" />
-                              {user.email}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <CalendarIcon className="w-4 h-4" />
-                              {new Date(user.created_at).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge variant={user.role === "admin" ? "destructive" : "secondary"}>{user.role}</Badge>
-                            <Badge variant="outline">{user.auth_provider}</Badge>
-                            <Badge variant="outline">{user.notes_count} notes</Badge>
-                          </div>
-                        </div>
-                      </div>
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" size="sm" onClick={() => handleViewUserNotes(user)}>
-                            <EyeIcon className="w-4 h-4 mr-2" />
-                            View Notes
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle>
-                              Notes by {selectedUser?.name} ({userNotes.length})
-                            </DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            {loadingUserNotes ? (
-                              <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                              </div>
-                            ) : userNotes.length === 0 ? (
-                              <p className="text-gray-500 text-center py-8">No notes found</p>
-                            ) : (
-                              userNotes.map((note) => (
-                                <Card key={note.id}>
-                                  <CardHeader>
-                                    <CardTitle className="text-lg">{note.title}</CardTitle>
-                                    <p className="text-sm text-gray-500">
-                                      Created: {new Date(note.created_at).toLocaleString()}
-                                    </p>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <p className="text-gray-700 whitespace-pre-wrap">{note.content}</p>
-                                  </CardContent>
-                                </Card>
-                              ))
-                            )}
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
+              {filteredUsers.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <UsersIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
+                    <p className="text-gray-600">
+                      {searchTerm ? "Try adjusting your search terms" : "No users have registered yet"}
+                    </p>
                   </CardContent>
                 </Card>
-              ))}
+              ) : (
+                filteredUsers.map((user) => (
+                  <Card key={user.id}>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <UserIcon className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-lg">{user.name}</h3>
+                            <div className="flex items-center gap-4 text-sm text-gray-600">
+                              <div className="flex items-center gap-1">
+                                <MailIcon className="w-4 h-4" />
+                                {user.email}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <CalendarIcon className="w-4 h-4" />
+                                {new Date(user.created_at).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Badge variant={user.role === "admin" ? "destructive" : "secondary"}>{user.role}</Badge>
+                              <Badge variant="outline">{user.auth_provider}</Badge>
+                              <Badge variant="outline">{user.notes_count} notes</Badge>
+                            </div>
+                          </div>
+                        </div>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" onClick={() => handleViewUserNotes(user)}>
+                              <EyeIcon className="w-4 h-4 mr-2" />
+                              View Notes
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>
+                                Notes by {selectedUser?.name} ({userNotes.length})
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              {loadingUserNotes ? (
+                                <div className="flex items-center justify-center py-8">
+                                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                </div>
+                              ) : userNotes.length === 0 ? (
+                                <p className="text-gray-500 text-center py-8">No notes found</p>
+                              ) : (
+                                userNotes.map((note) => (
+                                  <Card key={note.id}>
+                                    <CardHeader>
+                                      <CardTitle className="text-lg">{note.title}</CardTitle>
+                                      <p className="text-sm text-gray-500">
+                                        Created: {new Date(note.created_at).toLocaleString()}
+                                      </p>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <p className="text-gray-700 whitespace-pre-wrap">{note.content}</p>
+                                    </CardContent>
+                                  </Card>
+                                ))
+                              )}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </TabsContent>
 
           <TabsContent value="notes">
             <div className="grid gap-4">
-              {filteredNotes.map((note) => (
-                <Card key={note.id}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{note.title}</CardTitle>
-                        <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
-                          <span>By: {note.user_name}</span>
-                          <span>({note.user_email})</span>
-                          <span>{new Date(note.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-gray-700 line-clamp-3">{note.content}</p>
+              {filteredNotes.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <FileTextIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No notes found</h3>
+                    <p className="text-gray-600">
+                      {searchTerm ? "Try adjusting your search terms" : "No notes have been created yet"}
+                    </p>
                   </CardContent>
                 </Card>
-              ))}
+              ) : (
+                filteredNotes.map((note) => (
+                  <Card key={note.id}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{note.title}</CardTitle>
+                          <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
+                            <span>By: {note.user_name}</span>
+                            <span>({note.user_email})</span>
+                            <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-700 line-clamp-3">{note.content}</p>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </TabsContent>
         </Tabs>

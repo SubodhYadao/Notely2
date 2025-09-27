@@ -6,6 +6,9 @@ import bcrypt from "bcryptjs"
 const sql = neon(process.env.DATABASE_URL!)
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
+// Force dynamic rendering
+export const dynamic = "force-dynamic"
+
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()
